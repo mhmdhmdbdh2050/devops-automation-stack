@@ -54,7 +54,7 @@ def add_task():
     cur.close()
     conn.close()
 
-    r.delete("tasks")  
+    r.delete("tasks")
     return jsonify({"message": "Task added"}), 201
 
 if __name__ == "__main__":

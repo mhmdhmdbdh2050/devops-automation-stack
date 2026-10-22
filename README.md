@@ -1,39 +1,43 @@
 # DevOps Automation Stack
 
-A learning project that runs a containerized backend with Docker Compose, Flask, PostgreSQL, Redis, and Nginx. It is not a production deployment template.
+A learning project for operating a small Flask API with Docker Compose, PostgreSQL, Redis, and Nginx. It is not a production deployment template.
 
-The project is a practical learning environment for understanding how multiple services work together in a containerized environment.
+## Quick start
 
-The project currently demonstrates:
+Requirements: Docker Engine with the Compose plugin and Git Bash, WSL, or another Bash shell for the helper scripts.
 
-- Docker containerization
-- Docker Compose orchestration
-- Flask backend development
-- PostgreSQL database integration
-- Redis caching
-- Nginx reverse proxy
-- Docker networking
-- Persistent Docker volumes
-- Environment variable management
-- Container health checks
-- Service dependencies
-- Database initialization
-- Basic operational automation
-- Git and GitHub workflow
+```bash
+git clone https://github.com/mhmdhmdbdh2050/devops-automation-stack.git
+cd devops-automation-stack
+cp .env.example .env
+```
+
+Set a unique local `DB_PASS` in `.env`, then start the stack:
+
+```bash
+docker compose up -d --build
+docker compose ps
+curl -i http://localhost:8080/ready
+```
+
+The API is available through Nginx at `http://localhost:8080`. `/health` is a liveness endpoint; `/ready` checks PostgreSQL and Redis. Set `APP_PORT` in `.env` if host port 8080 is already occupied. See the sections below for API examples, backup and restore, troubleshooting, and cleanup.
+
+To run the API unit tests and configuration checks:
+
+```bash
+docker build --target test -t devops-automation-stack-app-test ./app
+docker run --rm devops-automation-stack-app-test
+docker compose --env-file .env.example config --quiet
+bash -n scripts/backup.sh scripts/restore.sh scripts/healthcheck.sh
+```
+
+`docker compose down` removes this project's containers and networks while preserving the PostgreSQL volume. Use the documented explicit reset command only when you intend to delete the project's data.
 
 ---
 
 ## 📌 Project Overview
 
-The application is a simple task management backend.
-
-The Flask application provides API endpoints for retrieving and creating tasks.
-
-PostgreSQL is used as the primary database, while Redis is used as a temporary cache layer.
-
-Nginx acts as a reverse proxy and provides the public entry point to the application.
-
-All services are managed using Docker Compose.
+The Flask API lists and creates tasks. PostgreSQL stores the tasks, Redis caches list responses, and Nginx is the only service exposed to the host. Nginx and Flask share a frontend network; Flask, PostgreSQL, and Redis share a backend network.
 
 ---
 

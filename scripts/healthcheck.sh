@@ -1,36 +1,39 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
-SERVICES=("tasks_db" "tasks_redis" "tasks_app" "tasks_nginx")
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+cd -- "$PROJECT_DIR"
+
+SERVICES=(db redis app nginx)
+STATUS_OUTPUT="$(docker compose ps --all --format '{{.Service}}|{{.State}}|{{.Health}}')"
 ALL_HEALTHY=true
 
-echo "Checking service health..."
-echo "-----------------------------"
-
 for SERVICE in "${SERVICES[@]}"; do
-    STATUS=$(docker inspect --format='{{.State.Health.Status}}' "$SERVICE" 2>/dev/null)
+  LINE="$(printf '%s\n' "$STATUS_OUTPUT" | awk -F'|' -v service="$SERVICE" '$1 == service { print; exit }')"
+  if [[ -z "$LINE" ]]; then
+    echo "$SERVICE: stopped or not created"
+    ALL_HEALTHY=false
+    continue
+  fi
 
-    if [ -z "$STATUS" ]; then
-        RUNNING=$(docker inspect --format='{{.State.Running}}' "$SERVICE" 2>/dev/null)
-        if [ "$RUNNING" == "true" ]; then
-            echo "$SERVICE: running (no healthcheck defined)"
-        else
-            echo "$SERVICE: stopped!"
-            ALL_HEALTHY=false
-        fi
-    elif [ "$STATUS" == "healthy" ]; then
-        echo "$SERVICE: healthy"
-    else
-        echo "$SERVICE: $STATUS"
-        ALL_HEALTHY=false
-    fi
+  IFS='|' read -r _ STATE HEALTH <<< "$LINE"
+  if [[ "$STATE" != "running" ]]; then
+    echo "$SERVICE: $STATE"
+    ALL_HEALTHY=false
+  elif [[ -n "$HEALTH" && "$HEALTH" != "healthy" ]]; then
+    echo "$SERVICE: $HEALTH"
+    ALL_HEALTHY=false
+  elif [[ -n "$HEALTH" ]]; then
+    echo "$SERVICE: healthy"
+  else
+    echo "$SERVICE: running (no health check defined)"
+  fi
 done
 
-echo "-----------------------------"
-
-if [ "$ALL_HEALTHY" = true ]; then
-    echo "All services are running properly"
-    exit 0
+if [[ "$ALL_HEALTHY" == true ]]; then
+  echo "All services are running and healthy where a health check is defined."
 else
-    echo "One or more services have an issue!"
-    exit 1
+  echo "One or more services are stopped or unhealthy." >&2
+  exit 1
 fi

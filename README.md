@@ -2,7 +2,7 @@
 
 A learning project that runs a containerized backend with Docker Compose, Flask, PostgreSQL, Redis, and Nginx. It is not a production deployment template.
 
-This project was built as a practical DevOps learning project to understand how multiple services can work together in a containerized environment.
+The project is a practical learning environment for understanding how multiple services work together in a containerized environment.
 
 The project currently demonstrates:
 
@@ -115,6 +115,8 @@ devops-automation-stack/
 │
 ├── app/
 │   ├── app.py
+│   ├── tests/
+│   │   └── test_app.py
 │   ├── Dockerfile
 │   └── requirements.txt
 │
@@ -197,43 +199,10 @@ The Nginx configuration is mounted as read-only:
 
 
 🌐 Docker Networking
-All services communicate through a dedicated Docker bridge network:
-backend
-
-Docker's internal DNS allows services to communicate using their service names.
-For example:
-app → db:5432
-app → redis:6379
-nginx → app:5000
-
-No hard-coded container IP addresses are required.
+The stack uses separate frontend and backend bridge networks. Nginx and Flask share the frontend network; Flask, PostgreSQL, and Redis share the backend network. Nginx cannot connect directly to the database or cache. Docker DNS lets services use their Compose names, such as `app → db:5432` and `app → redis:6379`.
 
 ❤️ Health Checks
-The project uses Docker health checks for the core services.
-PostgreSQL
-healthcheck:
-  test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
-
-Redis
-healthcheck:
-  test: ["CMD", "redis-cli", "ping"]
-
-Flask Application
-The Flask application exposes:
-GET /health
-
-which returns:
-{
-  "status": "ok"
-}
-
-Docker checks the endpoint using Python:
-http://localhost:5000/health
-
-The application therefore becomes:
-Up (healthy)
-
-when the health check succeeds.
+PostgreSQL checks that its configured database accepts connections, and Redis uses `redis-cli ping`. Flask separates `GET /health` (process liveness) from `GET /ready` (PostgreSQL and Redis readiness). Compose uses `/ready` before reporting the app healthy and starting Nginx.
 
 🔄 Service Dependencies
 The application waits for PostgreSQL and Redis to become healthy.
@@ -276,7 +245,7 @@ Database configuration is provided through environment variables.
 Example:
 DB_NAME=tasksdb
 DB_USER=postgres
-DB_PASS=your_password
+DB_PASS=replace_with_a_random_local_password
 
 The actual .env file is intended for local use only.
 The repository contains:
@@ -312,7 +281,7 @@ cp .env.example .env
 Edit the file and configure the database credentials:
 DB_NAME=tasksdb
 DB_USER=postgres
-DB_PASS=your_password
+DB_PASS=replace_with_a_random_local_password
 
 Do not commit the real .env file.
 
@@ -334,15 +303,17 @@ Run:
 docker compose ps
 
 Expected result:
-tasks_db       Up (healthy)
-tasks_redis    Up (healthy)
-tasks_app      Up (healthy)
-tasks_nginx    Up
+db       Up (healthy)
+redis    Up (healthy)
+app      Up (healthy)
+nginx    Up
 
 
 🌐 Access the Application
 The application is accessible through Nginx:
 http://localhost:8080
+
+Set `APP_PORT` in `.env` to choose a different host port if 8080 is already in use.
 
 
 ❤️ Test the Health Endpoint
@@ -353,6 +324,8 @@ Expected response:
 {
   "status": "ok"
 }
+
+`/health` checks process liveness only. Use `/ready` to confirm PostgreSQL and Redis readiness.
 
 
 📋 API Endpoints
@@ -367,6 +340,12 @@ Response:
 {
   "status": "ok"
 }
+
+GET /ready
+Checks whether PostgreSQL and Redis respond. Returns HTTP 503 when either dependency is unavailable.
+
+Example:
+curl -i http://localhost:8080/ready
 
 
 GET /tasks
@@ -441,7 +420,9 @@ Expected response:
   "message": "Task added"
 }
 
-The Redis task cache is cleared after creating a new task so that subsequent requests retrieve fresh data.
+The application attempts to clear the Redis task cache after saving a task. If Redis is unavailable, the task is still saved and the cached response may remain until its 30-second TTL expires.
+
+The request must contain a JSON object with a non-empty `title` of at most 255 characters; invalid input returns HTTP 400.
 
 💾 Database Persistence
 PostgreSQL uses a named Docker volume:
@@ -544,7 +525,7 @@ List networks:
 docker network ls
 
 Inspect the project network:
-docker network inspect devops-automation-stack_backend
+docker network ls --filter "label=com.docker.compose.network=backend"
 
 This can be used to inspect service connectivity and Docker DNS information.
 
@@ -581,18 +562,16 @@ The Nginx configuration is mounted read-only:
 ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
 
 Docker Network
-Internal services communicate through the dedicated:
-backend
-
-network.
+Nginx is not attached to the backend network, so it cannot initiate connections directly to PostgreSQL or Redis.
 
 🧪 Local Validation Procedure
-The GitHub Actions workflow validates Compose configuration, shell syntax, Python compilation, and the application image build. Automated application behavior tests are not included yet. Run these checks locally:
+The GitHub Actions workflow validates Compose configuration, shell syntax, API unit tests, and the application image build. Run the checks locally:
 
 ```bash
 docker compose --env-file .env.example config --quiet
 bash -n scripts/backup.sh scripts/restore.sh scripts/healthcheck.sh
-python -m compileall -q app
+docker build --target test -t devops-automation-stack-app-test ./app
+docker run --rm devops-automation-stack-app-test
 docker compose --env-file .env.example build app
 docker compose up -d --build
 docker compose ps
@@ -632,10 +611,8 @@ GitHub
 The project can be extended later as additional DevOps concepts are learned.
 Possible future improvements include:
 CI/CD with GitHub Actions
-Automated testing
 HTTPS
 Docker Secrets
-Non-root containers
 Container resource limits
 Image vulnerability scanning
 Prometheus monitoring

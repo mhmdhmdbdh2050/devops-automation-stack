@@ -20,8 +20,10 @@ jobs:
       - name: Check shell syntax
         run: bash -n scripts/backup.sh scripts/restore.sh scripts/healthcheck.sh
 
-      - name: Compile Python sources
-        run: python -m compileall -q app
+      - name: Run API unit tests
+        run: |
+          docker build --target test -t devops-automation-stack-app-test ./app
+          docker run --rm devops-automation-stack-app-test
 
       - name: Build application image
         run: docker compose --env-file .env.example build app

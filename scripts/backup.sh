@@ -1,25 +1,37 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
-# Variables
-TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-BACKUP_DIR="./backups"
-BACKUP_FILE="$BACKUP_DIR/backup_$TIMESTAMP.sql.gz"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+BACKUP_DIR="$PROJECT_DIR/backups"
+RETENTION_DAYS="${RETENTION_DAYS:-7}"
 
-mkdir -p "$BACKUP_DIR"
-
-echo "Starting backup process: $TIMESTAMP"
-
-docker exec tasks_db pg_dump -U postgres tasksdb | gzip > "$BACKUP_FILE"
-
-if [ $? -eq 0 ]; then
-    echo "Backup completed successfully: $BACKUP_FILE"
-else
-    echo "Backup failed!"
-    exit 1
+if [[ ! "$RETENTION_DAYS" =~ ^[0-9]+$ ]]; then
+  echo "RETENTION_DAYS must be a non-negative integer." >&2
+  exit 2
 fi
 
-# Delete backups older than 7 days
-find "$BACKUP_DIR" -name "backup_*.sql.gz" -mtime +7 -delete
+mkdir -p -- "$BACKUP_DIR"
+umask 077
+TIMESTAMP="$(date +'%Y%m%d_%H%M%S')"
+BACKUP_FILE="$BACKUP_DIR/backup_${TIMESTAMP}_$$.sql.gz"
+TEMP_FILE="$(mktemp "$BACKUP_DIR/.backup_${TIMESTAMP}_XXXXXX.tmp")"
+trap 'rm -f -- "$TEMP_FILE"' EXIT
 
-echo "Old backups (older than 7 days) have been removed"
+echo "Creating PostgreSQL backup..."
+(
+  cd -- "$PROJECT_DIR"
+  docker compose exec -T db sh -c 'exec pg_dump --clean --if-exists -U "$POSTGRES_USER" "$POSTGRES_DB"'
+) | gzip -c > "$TEMP_FILE"
+
+gzip -t -- "$TEMP_FILE"
+if [[ ! -s "$TEMP_FILE" ]]; then
+  echo "Backup output is empty; refusing to publish it." >&2
+  exit 1
+fi
+
+mv -- "$TEMP_FILE" "$BACKUP_FILE"
+echo "Backup completed: $BACKUP_FILE"
+
+find "$BACKUP_DIR" -type f -name 'backup_*.sql.gz' -mtime "+$RETENTION_DAYS" -delete
+echo "Removed backups older than $RETENTION_DAYS days."

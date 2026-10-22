@@ -1,0 +1,27 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate Compose configuration
+        run: docker compose --env-file .env.example config --quiet
+
+      - name: Check shell syntax
+        run: bash -n scripts/backup.sh scripts/restore.sh scripts/healthcheck.sh
+
+      - name: Compile Python sources
+        run: python -m compileall -q app
+
+      - name: Build application image
+        run: docker compose --env-file .env.example build app

@@ -1,6 +1,6 @@
 # DevOps Automation Stack
 
-A production-inspired containerized backend project built with Docker Compose, Flask, PostgreSQL, Redis, and Nginx.
+A learning project that runs a containerized backend with Docker Compose, Flask, PostgreSQL, Redis, and Nginx. It is not a production deployment template.
 
 This project was built as a practical DevOps learning project to understand how multiple services can work together in a containerized environment.
 
@@ -471,23 +471,16 @@ scripts/backup.sh
 Run:
 ./scripts/backup.sh
 
-The script creates a compressed PostgreSQL backup.
-Example:
-backup_2026-08-10_01-30-00.sql.gz
-
-The .gz extension indicates gzip compression.
+The script creates a compressed PostgreSQL backup using Compose, validates a temporary gzip archive before publishing it, and removes archives older than seven days. The dump includes cleanup statements so restoring can replace objects captured in the backup. Set `RETENTION_DAYS` to change retention.
 
 ♻️ Database Restore
 The project also contains:
 scripts/restore.sh
 
 Usage:
-./scripts/restore.sh <backup-file.sql.gz>
+make restore FILE=backups/backup_20260810_013000_1234.sql.gz
 
-Example:
-./scripts/restore.sh backup_2026-08-10_01-30-00.sql.gz
-
-The restore workflow validates the backup and restores the SQL dump into PostgreSQL.
+The script validates the archive, requires interactive confirmation, and imports SQL in one transaction. It replaces objects included in the dump, but does not drop the database itself. Review the configured target before confirming.
 
 🩺 Service Health Check Script
 The project contains:
@@ -503,7 +496,7 @@ The project also includes a:
 Makefile
 
 which provides shortcuts for common project operations.
-Depending on the commands implemented in the current Makefile, common operations can include:
+The Makefile provides shortcuts for common operations, including:
 make up
 make down
 make build
@@ -513,6 +506,8 @@ make backup
 
 Check the available commands with:
 cat Makefile
+
+`make clean` preserves the database volume. To intentionally delete database data, run `make reset-data CONFIRM=yes`.
 
 
 📊 Useful Docker Commands
@@ -591,31 +586,20 @@ backend
 
 network.
 
-🧪 Validation Performed
-The current project has been tested with the following workflow:
-docker compose config
+🧪 Local Validation Procedure
+The GitHub Actions workflow validates Compose configuration, shell syntax, Python compilation, and the application image build. Automated application behavior tests are not included yet. Run these checks locally:
 
-to validate the Compose configuration.
-The complete stack was then built and started using:
+```bash
+docker compose --env-file .env.example config --quiet
+bash -n scripts/backup.sh scripts/restore.sh scripts/healthcheck.sh
+python -m compileall -q app
+docker compose --env-file .env.example build app
 docker compose up -d --build
-
-Container health was verified using:
 docker compose ps
-
-The application successfully reached:
-Up (healthy)
-
-for the Flask container.
-The API was tested through Nginx:
 curl http://localhost:8080/tasks
+```
 
-The first request successfully retrieved data from PostgreSQL:
-source: db
-
-A subsequent request successfully retrieved the cached data from Redis:
-source: cache
-
-This confirmed communication between the four services.
+Expected: PostgreSQL, Redis, and Flask report healthy; Nginx is running. The first `/tasks` response should report `source: db`; a subsequent request within 30 seconds can report `source: cache`.
 
 📚 DevOps Concepts Demonstrated
 This project demonstrates practical understanding of:

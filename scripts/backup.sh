@@ -1,25 +1,19 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 077
 
-# Variables
-TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-BACKUP_DIR="./backups"
-BACKUP_FILE="$BACKUP_DIR/backup_$TIMESTAMP.sql.gz"
+backup_dir=${BACKUP_DIR:-./backups}
+timestamp=$(date +'%Y%m%d_%H%M%S')
+backup_file="${backup_dir}/backup_${timestamp}_$$.dump"
 
-mkdir -p "$BACKUP_DIR"
+mkdir -p -- "$backup_dir"
+tmp_file=$(mktemp "${backup_file}.tmp.XXXXXX")
+trap 'rm -f -- "$tmp_file"' EXIT
 
-echo "Starting backup process: $TIMESTAMP"
+printf 'Starting PostgreSQL backup: %s\n' "$timestamp"
+docker compose exec -T db sh -c 'pg_dump --format=custom --no-owner -U "$POSTGRES_USER" "$POSTGRES_DB"' > "$tmp_file"
+docker compose exec -T db pg_restore --list - < "$tmp_file" > /dev/null
+mv -- "$tmp_file" "$backup_file"
+trap - EXIT
 
-docker exec tasks_db pg_dump -U postgres tasksdb | gzip > "$BACKUP_FILE"
-
-if [ $? -eq 0 ]; then
-    echo "Backup completed successfully: $BACKUP_FILE"
-else
-    echo "Backup failed!"
-    exit 1
-fi
-
-# Delete backups older than 7 days
-find "$BACKUP_DIR" -name "backup_*.sql.gz" -mtime +7 -delete
-
-echo "Old backups (older than 7 days) have been removed"
+printf 'Backup verified and saved to: %s\n' "$backup_file"

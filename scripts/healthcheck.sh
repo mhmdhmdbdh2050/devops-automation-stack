@@ -1,36 +1,26 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
-SERVICES=("tasks_db" "tasks_redis" "tasks_app" "tasks_nginx")
-ALL_HEALTHY=true
+services=(db redis app nginx)
+all_healthy=true
 
-echo "Checking service health..."
-echo "-----------------------------"
+printf 'Checking Docker Compose service health...\n'
+for service in "${services[@]}"; do
+  state=$(docker compose ps --all --format '{{.State}}' "$service" 2>/dev/null || true)
+  health=$(docker compose ps --all --format '{{.Health}}' "$service" 2>/dev/null || true)
 
-for SERVICE in "${SERVICES[@]}"; do
-    STATUS=$(docker inspect --format='{{.State.Health.Status}}' "$SERVICE" 2>/dev/null)
-
-    if [ -z "$STATUS" ]; then
-        RUNNING=$(docker inspect --format='{{.State.Running}}' "$SERVICE" 2>/dev/null)
-        if [ "$RUNNING" == "true" ]; then
-            echo "$SERVICE: running (no healthcheck defined)"
-        else
-            echo "$SERVICE: stopped!"
-            ALL_HEALTHY=false
-        fi
-    elif [ "$STATUS" == "healthy" ]; then
-        echo "$SERVICE: healthy"
-    else
-        echo "$SERVICE: $STATUS"
-        ALL_HEALTHY=false
-    fi
+  if [[ "$state" != running ]]; then
+    printf '%s: %s\n' "$service" "${state:-not found}"
+    all_healthy=false
+  elif [[ "$health" == healthy ]]; then
+    printf '%s: healthy\n' "$service"
+  else
+    printf '%s: running, health=%s\n' "$service" "${health:-not reported}"
+    all_healthy=false
+  fi
 done
 
-echo "-----------------------------"
-
-if [ "$ALL_HEALTHY" = true ]; then
-    echo "All services are running properly"
-    exit 0
-else
-    echo "One or more services have an issue!"
-    exit 1
+if [[ "$all_healthy" == true ]]; then
+  exit 0
 fi
+exit 1

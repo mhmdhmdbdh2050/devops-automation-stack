@@ -1,28 +1,40 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
-if [ -z "$1" ]; then
-    echo "Usage: ./restore.sh <path_to_backup_file.sql.gz>"
-    exit 1
+usage() {
+  printf 'Usage: %s --replace <backup-file.dump>\n' "$0" >&2
+  printf 'This operation replaces objects contained in the backup in the configured database.\n' >&2
+}
+
+if [[ $# -ne 2 || $1 != --replace ]]; then
+  usage
+  exit 2
 fi
 
-BACKUP_FILE="$1"
-
-if [ ! -f "$BACKUP_FILE" ]; then
-    echo "File not found: $BACKUP_FILE"
-    exit 1
+backup_file=$2
+if [[ ! -f "$backup_file" ]]; then
+  printf 'Backup file not found: %s\n' "$backup_file" >&2
+  exit 1
 fi
 
-echo "WARNING: This will overwrite all current data!"
-read -p "Are you sure you want to continue? (yes/no): " CONFIRM
-
-if [ "$CONFIRM" != "yes" ]; then
-    echo "Operation cancelled"
-    exit 0
+if [[ "$backup_file" != *.dump ]]; then
+  printf 'Expected a custom-format PostgreSQL .dump file.\n' >&2
+  exit 1
 fi
 
-echo "Restoring backup from: $BACKUP_FILE"
+printf 'Checking backup archive: %s\n' "$backup_file"
+docker compose exec -T db pg_restore --list - < "$backup_file" > /dev/null
 
-gunzip -c "$BACKUP_FILE" | docker exec -i tasks_db psql -U postgres tasksdb
+printf 'This will drop and recreate objects present in the backup in the configured database.\n'
+read -r -p 'Type RESTORE to continue: ' confirmation
+if [[ "$confirmation" != RESTORE ]]; then
+  printf 'Restore cancelled.\n'
+  exit 0
+fi
 
-echo "Restore completed successfully"
+printf 'Restoring backup to the configured PostgreSQL database...\n'
+docker compose exec -T db sh -c \
+  'pg_restore --clean --if-exists --no-owner --exit-on-error -U "$POSTGRES_USER" -d "$POSTGRES_DB" -' \
+  < "$backup_file"
+
+printf 'Restore completed successfully.\n'

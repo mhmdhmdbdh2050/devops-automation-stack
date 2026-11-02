@@ -10,7 +10,7 @@ app = Flask(__name__)
 DB_HOST = os.environ.get("DB_HOST", "db")
 DB_NAME = os.environ.get("DB_NAME", "tasksdb")
 DB_USER = os.environ.get("DB_USER", "postgres")
-DB_PASS = os.environ.get("DB_PASS", "postgres")
+DB_PASS = os.environ["DB_PASS"]
 
 REDIS_HOST = os.environ.get("REDIS_HOST", "redis")
 
@@ -44,8 +44,11 @@ def get_tasks():
 
 @app.route("/tasks", methods=["POST"])
 def add_task():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     title = data.get("title")
+    if not isinstance(title, str) or not title.strip():
+        return jsonify({"error": "A non-empty title is required"}), 400
+    title = title.strip()
 
     conn = get_db_connection()
     cur = conn.cursor()

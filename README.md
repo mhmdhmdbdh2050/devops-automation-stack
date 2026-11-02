@@ -593,6 +593,8 @@ network.
 
 🧪 Validation Performed
 The current project has been tested with the following workflow:
+Run `docker compose config` to validate the Compose file structure and resolve the Compose model before building or starting the services. This validation confirms that the Compose file is parseable; it does not, by itself, prove that containers start successfully.
+
 docker compose config
 
 to validate the Compose configuration.

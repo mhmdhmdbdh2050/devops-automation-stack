@@ -647,6 +647,35 @@ GitHub
 🚧 Future Improvements
 The project can be extended later as additional DevOps concepts are learned.
 Possible future improvements include:
+
+### Optional GitHub Actions CI proposal (not implemented)
+
+A future workflow can run on pushes and pull requests with these checks:
+
+1. Install ShellCheck and lint the Bash scripts in `scripts/`.
+2. Run `docker compose config` to validate the Compose model.
+3. Run `docker compose build` to verify that the application image builds.
+
+Example workflow outline (proposal only):
+
+```yaml
+name: Compose CI
+on: [push, pull_request]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Lint shell scripts
+        run: shellcheck scripts/*.sh
+      - name: Validate Compose
+        run: docker compose config
+      - name: Build services
+        run: docker compose build
+```
+
 CI/CD with GitHub Actions
 Automated testing
 HTTPS
